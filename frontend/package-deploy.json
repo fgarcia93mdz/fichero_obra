@@ -1,0 +1,16 @@
+{
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "build:pwa": "npm run build && npm run generate:icons",
+    "generate:icons": "node generate-icons.js",
+    "serve:https": "npm run build && node https-server.js",
+    "serve:http": "npm run build && node http-server.js",
+    "dev:https": "HTTPS=true SSL_CRT_FILE=cert.pem SSL_KEY_FILE=key.pem react-scripts start",
+    "deploy:netlify": "npm run build && echo 'Sube la carpeta build/ a netlify.com'",
+    "deploy:vercel": "npm run build && npx vercel --prod",
+    "deploy:surge": "npm run build && npx surge build/ --domain fichero-obra.surge.sh"
+  }
+}

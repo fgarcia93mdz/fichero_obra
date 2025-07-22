@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { QrReader } from 'react-qr-reader';
+import React, { useState, useEffect, useRef } from 'react';
+import QrScanner from 'qr-scanner';
 import { fichadaService, geolocationService, authService } from '../services/api';
 import { toast } from 'react-toastify';
 
@@ -10,6 +10,8 @@ const QRScannerFichada = () => {
   const [userLocation, setUserLocation] = useState(null);
   const [gettingLocation, setGettingLocation] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const videoRef = useRef(null);
+  const qrScannerRef = useRef(null);
 
   // Cargar información del usuario al montar el componente
   useEffect(() => {
@@ -34,14 +36,183 @@ const QRScannerFichada = () => {
     }
   };
 
+  // Inicializar y destruir el scanner
+  useEffect(() => {
+    return () => {
+      if (qrScannerRef.current) {
+        qrScannerRef.current.stop();
+        qrScannerRef.current.destroy();
+      }
+    };
+  }, []);
+
+  // Iniciar scanning
+  const iniciarEscaneo = async () => {
+    try {
+      setScanning(true);
+      
+      // Pequeño delay para asegurar que el DOM esté listo
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Validar que el elemento video esté disponible
+      if (!videoRef.current) {
+        console.error('Elemento video no disponible después del delay');
+        toast.error('Error: No se puede acceder al elemento de video de la cámara. Por favor, recarga la página.');
+        setScanning(false);
+        return;
+      }
+      
+      // Verificar disponibilidad de cámaras antes de intentar
+      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const cameras = devices.filter(device => device.kind === 'videoinput');
+          
+          if (cameras.length === 0) {
+            toast.error('No se detectaron cámaras en este dispositivo.');
+            setScanning(false);
+            return;
+          }
+          
+          console.log(`📷 ${cameras.length} cámara(s) detectada(s)`);
+          
+          // Probar acceso a la cámara primero con configuración más simple
+          let stream;
+          try {
+            // Intentar primero con configuración básica
+            stream = await navigator.mediaDevices.getUserMedia({ 
+              video: true
+            });
+            console.log('✅ Acceso a cámara confirmado (configuración básica)');
+            stream.getTracks().forEach(track => track.stop());
+            
+            // Si funciona, intentar con configuración preferida
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                  facingMode: 'environment',
+                  width: { ideal: 640 },
+                  height: { ideal: 480 }
+                } 
+              });
+              console.log('✅ Cámara con configuración preferida');
+              stream.getTracks().forEach(track => track.stop());
+            } catch (envError) {
+              console.warn('⚠️ Configuración preferida falló, usando básica');
+            }
+            
+          } catch (mediaError) {
+            console.error('❌ Error al acceder a cámara:', mediaError);
+            let errorMsg = 'Error al acceder a la cámara';
+            
+            if (mediaError.name === 'NotAllowedError') {
+              errorMsg = 'Permiso de cámara denegado. Permite el acceso en configuración del navegador.';
+            } else if (mediaError.name === 'NotFoundError') {
+              errorMsg = 'No se encontró cámara disponible en este dispositivo.';
+            } else if (mediaError.name === 'NotReadableError') {
+              errorMsg = 'Cámara en uso por otra aplicación. Cierra otras apps que usen la cámara.';
+            } else if (mediaError.name === 'AbortError') {
+              errorMsg = 'Timeout al acceder a la cámara. Intenta de nuevo o reinicia el navegador.';
+            }
+            
+            toast.error(errorMsg);
+            setScanning(false);
+            return;
+          }
+          
+        } catch (enumError) {
+          console.warn('⚠️ Error al enumerar dispositivos:', enumError);
+          // Continuar de todas formas, podría funcionar
+        }
+      }
+      
+      if (qrScannerRef.current) {
+        qrScannerRef.current.stop();
+        qrScannerRef.current.destroy();
+      }
+
+      const qrScanner = new QrScanner(
+        videoRef.current,
+        (result) => handleScan(result),
+        {
+          onDecodeError: (error) => {
+            // Silenciar errores de decodificación normales
+            if (!error.toString().includes('No QR code found')) {
+              console.warn('QR decode error:', error);
+            }
+          },
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          preferredCamera: 'environment', // Usar cámara trasera si está disponible
+          maxScansPerSecond: 5, // Limitar procesamiento para mejor rendimiento
+          returnDetailedScanResult: true, // Información detallada del escaneo
+          calculateScanRegion: (video) => {
+            // Región de escaneo más pequeña para mejor detección
+            const smallerSize = Math.min(video.videoWidth, video.videoHeight) * 0.6;
+            return {
+              x: Math.round((video.videoWidth - smallerSize) / 2),
+              y: Math.round((video.videoHeight - smallerSize) / 2),
+              width: Math.round(smallerSize),
+              height: Math.round(smallerSize),
+            };
+          },
+        }
+      );
+
+      qrScannerRef.current = qrScanner;
+      
+      console.log('🔄 Iniciando QrScanner...');
+      
+      // Usar timeout más largo para ambiente local
+      const startTimeout = setTimeout(() => {
+        console.error('⏰ Timeout al iniciar QrScanner');
+        toast.error('Timeout al iniciar cámara. Para testing local, considera usar hosting HTTPS.');
+        setScanning(false);
+      }, 15000); // 15 segundos timeout para local
+      
+      try {
+        await qrScanner.start();
+        clearTimeout(startTimeout);
+        console.log('✅ QrScanner iniciado correctamente');
+        toast.success('Cámara iniciada correctamente. Apunta al código QR.');
+      } catch (startError) {
+        clearTimeout(startTimeout);
+        throw startError; // Re-lanzar para manejo en catch principal
+      }
+      
+    } catch (error) {
+      console.error('Error al iniciar scanner:', error);
+      
+      let errorMsg = 'Error al acceder a la cámara';
+      const errorMessage = error?.message || error?.toString() || '';
+      
+      if (errorMessage.includes('NotAllowedError') || errorMessage.includes('Permission denied')) {
+        errorMsg = 'Permiso de cámara denegado. Por favor, permite el acceso a la cámara.';
+      } else if (errorMessage.includes('NotFoundError') || errorMessage.includes('Camera not found')) {
+        errorMsg = 'No se encontró cámara en este dispositivo.';
+      } else if (errorMessage.includes('NotSupportedError')) {
+        errorMsg = 'Tu navegador no soporta acceso a cámara. Usa Chrome, Firefox o Safari.';
+      } else if (errorMessage.includes('NotReadableError')) {
+        errorMsg = 'Cámara en uso por otra aplicación. Cierra otras apps que usen la cámara.';
+      } else if (errorMessage.includes('AbortError') || errorMessage.includes('Timeout')) {
+        errorMsg = 'Timeout al iniciar cámara. Intenta cerrar otras aplicaciones que usen la cámara o reinicia el navegador.';
+      } else if (errorMessage.includes('OverconstrainedError')) {
+        errorMsg = 'La cámara no soporta la configuración solicitada. Intenta con otra cámara.';
+      }
+      
+      toast.error(errorMsg);
+      setScanning(false);
+    }
+  };
+
   // Manejar el resultado del escaneo de QR
   const handleScan = async (result) => {
-    if (result?.text && !loading) {
+    if (result && !loading) {
       try {
         setLoading(true);
         
         // Parsear los datos del QR
-        const qrData = JSON.parse(result.text);
+        const qrData = JSON.parse(result.data);
         
         // Validar que el QR tenga la estructura esperada
         if (!qrData.obraId || !qrData.timestamp) {
@@ -62,8 +233,18 @@ const QRScannerFichada = () => {
         }
 
         setScannedData(qrData);
+        
+        // Detener el scanner
+        if (qrScannerRef.current) {
+          qrScannerRef.current.stop();
+        }
         setScanning(false);
-        toast.info('QR válido escaneado. Ahora selecciona entrada o salida.');
+        
+        const mensaje = qrData.timestamp 
+          ? 'QR válido escaneado. Ahora selecciona entrada o salida.'
+          : 'QR permanente de obra escaneado. Selecciona entrada o salida.';
+        
+        toast.info(mensaje);
 
       } catch (error) {
         console.error('Error al procesar QR:', error);
@@ -71,14 +252,6 @@ const QRScannerFichada = () => {
       } finally {
         setLoading(false);
       }
-    }
-  };
-
-  // Manejar errores del scanner
-  const handleError = (error) => {
-    console.error('Error del scanner:', error);
-    if (error?.name !== 'NotAllowedError') {
-      toast.error('Error al acceder a la cámara: ' + error.message);
     }
   };
 
@@ -141,6 +314,9 @@ const QRScannerFichada = () => {
 
   // Cancelar escaneo actual
   const cancelarEscaneo = () => {
+    if (qrScannerRef.current) {
+      qrScannerRef.current.stop();
+    }
     setScanning(false);
     setScannedData(null);
     setUserLocation(null);
@@ -215,19 +391,17 @@ const QRScannerFichada = () => {
             border: '2px solid #007bff', 
             borderRadius: '8px', 
             overflow: 'hidden',
-            backgroundColor: 'black'
+            backgroundColor: 'black',
+            position: 'relative'
           }}>
-            <QrReader
-              delay={300}
-              onError={handleError}
-              onResult={handleScan}
-              style={{ width: '100%' }}
-              constraints={{
-                audio: false,
-                video: { 
-                  facingMode: 'environment' // Usar cámara trasera si está disponible
-                }
+            <video
+              ref={videoRef}
+              style={{ 
+                width: '100%', 
+                height: 'auto',
+                display: 'block'
               }}
+              playsInline
             />
           </div>
           <div style={{ textAlign: 'center', marginTop: '10px' }}>
@@ -305,7 +479,7 @@ const QRScannerFichada = () => {
       {!scanning && !scannedData && (
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <button
-            onClick={() => setScanning(true)}
+            onClick={iniciarEscaneo}
             disabled={loading}
             style={{
               padding: '12px 24px',

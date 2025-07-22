@@ -7,12 +7,23 @@ require('dotenv').config();
 // Importar rutas
 const fichadaRoutes = require('./routes/fichada');
 const authRoutes = require('./routes/auth');
+// const obraRoutes = require('./routes/obra');
 
 // Importar base de datos
-const sequelize = require('./config/database');
+const { sequelize } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+/**
+ * Configuración de proxy
+ * Necesario para rate limiting cuando se ejecuta detrás de proxies
+ */
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1); // Confiar en el primer proxy
+} else {
+  app.set('trust proxy', false); // En desarrollo, no confiar en proxies
+}
 
 /**
  * Middleware de seguridad
@@ -29,6 +40,14 @@ const limiter = rateLimit({
   },
   standardHeaders: true, // Devolver rate limit info en los headers `RateLimit-*` 
   legacyHeaders: false, // Deshabilitar los headers `X-RateLimit-*`
+  // Configuración para manejar proxies correctamente
+  keyGenerator: (req) => {
+    return req.ip; // Usar la IP real detectada por Express
+  },
+  // Skip rate limiting para health checks
+  skip: (req) => {
+    return req.path === '/api/health' || req.path === '/api/info';
+  }
 });
 app.use(limiter);
 
@@ -44,7 +63,16 @@ app.use(express.urlencoded({ extended: true }));
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
     ? [process.env.FRONTEND_URL] 
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'],
+    : [
+        'http://localhost:3000', 
+        'https://localhost:3000',
+        'http://localhost:3001', 
+        'https://localhost:3443',
+        'https://localhost:3444',
+        'https://localhost:3445',
+        'http://localhost:5173',
+        'https://localhost:5173'
+      ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,
@@ -68,6 +96,67 @@ if (process.env.NODE_ENV === 'development') {
  */
 app.use('/api/auth', authRoutes);
 app.use('/api/fichada', fichadaRoutes);
+
+/**
+ * Endpoint temporal para obtener obras (PÚBLICO - sin autenticación)
+ */
+app.get('/api/obras', async (req, res) => {
+  try {
+    const { Obra } = require('./models');
+    
+    const obras = await Obra.findAll({
+      where: {
+        activa: true
+      },
+      order: [['createdAt', 'DESC']],
+      attributes: [
+        'id', 'nombre', 'descripcion', 'direccion', 
+        'lat', 'long', 'radioPermitido', 'activa',
+        'fechaInicio', 'fechaFinEstimada', 'createdAt'
+      ]
+    });
+
+    res.json({
+      success: true,
+      message: 'Obras obtenidas correctamente',
+      data: obras,
+      count: obras.length
+    });
+
+  } catch (error) {
+    console.error('Error al obtener obras:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Endpoint de debug para verificar tokens
+ */
+app.get('/api/debug/token', (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    res.json({
+      authHeader: authHeader,
+      token: token,
+      tokenLength: token ? token.length : 0,
+      tokenParts: token ? token.split('.').length : 0,
+      jwtSecret: process.env.JWT_SECRET ? 'CONFIGURADO' : 'NO_CONFIGURADO'
+    });
+  } catch (error) {
+    res.json({
+      error: error.message,
+      authHeader: req.headers['authorization']
+    });
+  }
+});
+
+// app.use('/api/obras', obraRoutes);
 
 /**
  * Ruta de health check
@@ -121,6 +210,13 @@ app.get('/api/info', (req, res) => {
         estadisticas: 'GET /api/fichada/estadisticas',
         obras: 'GET /api/fichada/obras',
         usuarios: 'GET /api/fichada/usuarios'
+      },
+      obras: {
+        listar: 'GET /api/obras',
+        obtener: 'GET /api/obras/:id',
+        crear: 'POST /api/obras',
+        actualizar: 'PUT /api/obras/:id',
+        desactivar: 'DELETE /api/obras/:id'
       }
     },
     documentation: 'Ver README.md para documentación completa'

@@ -42,11 +42,14 @@ const authenticateToken = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Error en authenticateToken:', error);
+    console.error('Token recibido:', token);
+    console.error('AuthHeader completo:', authHeader);
     
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         error: 'Token inválido',
-        message: 'El token JWT no es válido'
+        message: 'El token JWT no es válido o está mal formado',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
     

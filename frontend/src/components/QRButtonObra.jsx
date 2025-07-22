@@ -63,6 +63,137 @@ const QRButtonObra = () => {
     toast.info('QR limpiado');
   };
 
+  // Función para descargar el QR como imagen
+  const descargarQR = () => {
+    if (!qrBase64) {
+      toast.error('No hay QR para descargar');
+      return;
+    }
+
+    try {
+      const link = document.createElement('a');
+      link.href = qrBase64;
+      
+      const obraSeleccionada = obras.find(obra => obra.id == selectedObra);
+      const nombreObra = obraSeleccionada ? obraSeleccionada.nombre.replace(/[^a-zA-Z0-9]/g, '_') : 'Obra';
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      
+      link.download = `QR_${nombreObra}_${timestamp}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('QR descargado correctamente');
+    } catch (error) {
+      console.error('Error al descargar QR:', error);
+      toast.error('Error al descargar el QR');
+    }
+  };
+
+  // Función para imprimir el QR
+  const imprimirQR = () => {
+    if (!qrBase64) {
+      toast.error('No hay QR para imprimir');
+      return;
+    }
+
+    try {
+      const obraSeleccionada = obras.find(obra => obra.id == selectedObra);
+      const nombreObra = obraSeleccionada ? obraSeleccionada.nombre : 'Obra';
+      const direccion = obraSeleccionada ? obraSeleccionada.direccion : '';
+      const timestamp = new Date().toLocaleString('es-AR');
+
+      const ventanaImpresion = window.open('', '_blank');
+      ventanaImpresion.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>QR Code - ${nombreObra}</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                    margin: 20px;
+                    background: white;
+                }
+                .header {
+                    margin-bottom: 20px;
+                    border-bottom: 2px solid #333;
+                    padding-bottom: 15px;
+                }
+                .qr-container {
+                    margin: 30px auto;
+                    padding: 20px;
+                    border: 2px solid #333;
+                    display: inline-block;
+                    background: white;
+                }
+                .qr-image {
+                    max-width: 300px;
+                    height: auto;
+                }
+                .footer {
+                    margin-top: 20px;
+                    font-size: 12px;
+                    color: #666;
+                }
+                @media print {
+                    body { margin: 0; }
+                    .no-print { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🏗️ CÓDIGO QR - FICHADA DE OBRA</h1>
+                <h2>${nombreObra}</h2>
+                ${direccion ? `<p><strong>Dirección:</strong> ${direccion}</p>` : ''}
+                <p><strong>Generado:</strong> ${timestamp}</p>
+            </div>
+            
+            <div class="qr-container">
+                <img src="${qrBase64}" alt="QR Code" class="qr-image" />
+            </div>
+            
+            <div class="footer">
+                <p><strong>INSTRUCCIONES:</strong></p>
+                <p>1. Escanear este código QR con la aplicación móvil</p>
+                <p>2. Verificar que estés en la ubicación correcta</p>
+                <p>3. Seleccionar ENTRADA o SALIDA</p>
+                <p>4. Confirmar el registro de fichada</p>
+                <br>
+                <p><em>⚠️ Este código QR es válido por 5 minutos desde su generación</em></p>
+                <p><em>Sistema de Fichadas - Fichero de Obra</em></p>
+            </div>
+            
+            <div class="no-print" style="margin-top: 30px;">
+                <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    🖨️ Imprimir
+                </button>
+                <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">
+                    ❌ Cerrar
+                </button>
+            </div>
+        </body>
+        </html>
+      `);
+      
+      ventanaImpresion.document.close();
+      
+      // Esperar a que la imagen cargue antes de mostrar el diálogo de impresión
+      ventanaImpresion.onload = () => {
+        setTimeout(() => {
+          ventanaImpresion.print();
+        }, 500);
+      };
+      
+      toast.success('Ventana de impresión abierta');
+    } catch (error) {
+      console.error('Error al imprimir QR:', error);
+      toast.error('Error al preparar la impresión');
+    }
+  };
+
   const obraSeleccionada = obras.find(obra => obra.id == selectedObra);
 
   return (
@@ -168,7 +299,7 @@ const QRButtonObra = () => {
       {qrBase64 && (
         <div style={{ textAlign: 'center', marginTop: '20px' }}>
           <h4 style={{ marginBottom: '15px', color: '#28a745' }}>
-            ✅ QR Generado - Válido por 5 minutos
+            ✅ QR Generado - Permanente para esta obra
           </h4>
           <div style={{ 
             padding: '15px', 
@@ -187,8 +318,44 @@ const QRButtonObra = () => {
               }} 
             />
           </div>
+          
+          {/* Botones de descarga e impresión */}
+          <div style={{ marginTop: '15px' }}>
+            <button
+              onClick={descargarQR}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                marginRight: '10px',
+                fontSize: '14px'
+              }}
+              title="Descargar QR como imagen PNG"
+            >
+              📥 Descargar
+            </button>
+            <button
+              onClick={imprimirQR}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+              title="Abrir ventana de impresión"
+            >
+              🖨️ Imprimir
+            </button>
+          </div>
+          
           <p style={{ marginTop: '10px', fontSize: '14px', color: '#666' }}>
-            Escanea este código con la aplicación móvil para registrar tu fichada
+            Este QR es permanente para la obra - no expira. Ideal para imprimir y colocar en el lugar de trabajo.
           </p>
         </div>
       )}
@@ -205,9 +372,9 @@ const QRButtonObra = () => {
         <ol style={{ margin: 0, paddingLeft: '20px', color: '#856404' }}>
           <li>Selecciona la obra donde trabajarás</li>
           <li>Haz clic en "Generar QR" para crear el código</li>
-          <li>Muestra el QR al empleado que va a fichar</li>
-          <li>El QR es válido por 5 minutos solamente</li>
-          <li>El empleado debe escanear y seleccionar entrada/salida</li>
+          <li>El QR generado es permanente para esta obra (no expira)</li>
+          <li>Puedes imprimirlo y colocarlo en el lugar de trabajo</li>
+          <li>Los empleados escanean el QR y seleccionan entrada/salida</li>
         </ol>
       </div>
     </div>

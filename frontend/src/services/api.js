@@ -11,13 +11,32 @@ const api = axios.create({
   },
 });
 
+// Función para limpiar datos de autenticación
+const clearAuthData = () => {
+  const keysToRemove = ['authToken', 'userInfo', 'tokenExpiry', 'lastActivity'];
+  keysToRemove.forEach(key => {
+    if (localStorage.getItem(key)) {
+      localStorage.removeItem(key);
+      console.log(`🧹 Eliminado: ${key}`);
+    }
+  });
+  console.log('✅ Datos de autenticación eliminados del localStorage');
+};
+
 // Interceptor para agregar token JWT (si se implementa autenticación)
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
-    if (token) {
+    
+    // Validar que el token no esté vacío y tenga formato válido (3 partes separadas por .)
+    if (token && token.trim() !== '' && token.split('.').length === 3) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else if (token && token.trim() !== '') {
+      // Token existe pero está mal formado, eliminarlo
+      console.warn('⚠️ Token malformado detectado, limpiando localStorage...');
+      clearAuthData();
     }
+    
     return config;
   },
   (error) => {
@@ -33,9 +52,14 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Token expirado o inválido
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('userInfo');
-      window.location.href = '/login';
+      console.warn('🔐 Error de autenticación (401), limpiando datos...');
+      clearAuthData();
+      
+      // Solo redirigir si no estamos ya en login
+      if (window.location.pathname !== '/' && !window.location.pathname.includes('login')) {
+        console.log('🔄 Redirigiendo al login...');
+        window.location.href = '/';
+      }
     }
     return Promise.reject(error.response?.data || error.message);
   }
@@ -177,44 +201,28 @@ export const geolocationService = {
   }
 };
 
-// Servicio de autenticación mock (simulado para el ejemplo)
+// Servicio de autenticación real
 export const authService = {
-  // Simular login - en producción sería con JWT real
-  login: (dni, password) => {
-    return new Promise((resolve, reject) => {
-      // Simulamos usuarios para testing
-      const mockUsers = [
-        { id: 1, dni: '12345678', nombre: 'Juan Pérez', telefono: '+54261123456', password: '123' },
-        { id: 2, dni: '87654321', nombre: 'María García', telefono: '+54261654321', password: '456' },
-        { id: 3, dni: '11223344', nombre: 'Carlos López', telefono: '+54261789012', password: '789' }
-      ];
-
-      setTimeout(() => {
-        const user = mockUsers.find(u => u.dni === dni && u.password === password);
-        if (user) {
-          const token = `mock_token_${user.id}_${Date.now()}`;
-          const userInfo = {
-            userId: user.id,
-            nombre: user.nombre,
-            dni: user.dni,
-            telefono: user.telefono
-          };
-          
-          localStorage.setItem('authToken', token);
-          localStorage.setItem('userInfo', JSON.stringify(userInfo));
-          
-          resolve({ token, user: userInfo });
-        } else {
-          reject(new Error('Credenciales inválidas'));
-        }
-      }, 1000); // Simular latencia de red
-    });
+  // Login real con backend
+  login: async (dni, password) => {
+    try {
+      const response = await api.post('/auth/login', { dni, password });
+      
+      if (response.success && response.data) {
+        localStorage.setItem('authToken', response.data.token);
+        localStorage.setItem('userInfo', JSON.stringify(response.data.user));
+        return response.data;
+      } else {
+        throw new Error(response.message || 'Error de login');
+      }
+    } catch (error) {
+      throw error;
+    }
   },
 
   // Logout
   logout: () => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('userInfo');
+    clearAuthData();
   },
 
   // Obtener información del usuario actual
@@ -223,13 +231,32 @@ export const authService = {
       const userInfo = localStorage.getItem('userInfo');
       return userInfo ? JSON.parse(userInfo) : null;
     } catch (error) {
+      console.error('Error parsing user info:', error);
+      clearAuthData(); // Limpiar datos corruptos
       return null;
     }
   },
 
   // Verificar si el usuario está autenticado
   isAuthenticated: () => {
-    return localStorage.getItem('authToken') !== null;
+    const token = localStorage.getItem('authToken');
+    return token && token.trim() !== '' && token.split('.').length === 3;
+  },
+
+  // Limpiar tokens corruptos del localStorage  
+  clearAuthData: clearAuthData,
+
+  // Verificar si el token es válido
+  isTokenValid: () => {
+    const token = localStorage.getItem('authToken');
+    if (!token || token.trim() === '' || token.split('.').length !== 3) {
+      if (token) {
+        console.warn('🔧 Token inválido detectado, limpiando...');
+        clearAuthData();
+      }
+      return false;
+    }
+    return true;
   }
 };
 

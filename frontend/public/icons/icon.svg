@@ -1,0 +1,79 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#007bff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0056b3;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Fondo -->
+  <rect width="512" height="512" rx="80" fill="url(#grad1)"/>
+  
+  <!-- QR Code representativo -->
+  <g transform="translate(150, 150)" fill="white">
+    <!-- Esquinas del QR -->
+    <rect x="0" y="0" width="60" height="60" fill="white"/>
+    <rect x="10" y="10" width="40" height="40" fill="#007bff"/>
+    <rect x="20" y="20" width="20" height="20" fill="white"/>
+    
+    <rect x="152" y="0" width="60" height="60" fill="white"/>
+    <rect x="162" y="10" width="40" height="40" fill="#007bff"/>
+    <rect x="172" y="20" width="20" height="20" fill="white"/>
+    
+    <rect x="0" y="152" width="60" height="60" fill="white"/>
+    <rect x="10" y="162" width="40" height="40" fill="#007bff"/>
+    <rect x="20" y="172" width="20" height="20" fill="white"/>
+    
+    <!-- Patrón central simplificado -->
+    <g fill="white">
+      <rect x="80" y="20" width="12" height="12"/>
+      <rect x="100" y="20" width="12" height="12"/>
+      <rect x="120" y="20" width="12" height="12"/>
+      
+      <rect x="80" y="40" width="12" height="12"/>
+      <rect x="120" y="40" width="12" height="12"/>
+      
+      <rect x="20" y="80" width="12" height="12"/>
+      <rect x="40" y="80" width="12" height="12"/>
+      <rect x="80" y="80" width="12" height="12"/>
+      <rect x="100" y="80" width="12" height="12"/>
+      <rect x="140" y="80" width="12" height="12"/>
+      <rect x="160" y="80" width="12" height="12"/>
+      <rect x="180" y="80" width="12" height="12"/>
+      <rect x="200" y="80" width="12" height="12"/>
+      
+      <rect x="20" y="100" width="12" height="12"/>
+      <rect x="60" y="100" width="12" height="12"/>
+      <rect x="100" y="100" width="12" height="12"/>
+      <rect x="140" y="100" width="12" height="12"/>
+      <rect x="180" y="100" width="12" height="12"/>
+      
+      <rect x="80" y="120" width="12" height="12"/>
+      <rect x="120" y="120" width="12" height="12"/>
+      <rect x="160" y="120" width="12" height="12"/>
+      <rect x="200" y="120" width="12" height="12"/>
+      
+      <rect x="20" y="140" width="12" height="12"/>
+      <rect x="60" y="140" width="12" height="12"/>
+      <rect x="80" y="140" width="12" height="12"/>
+      <rect x="120" y="140" width="12" height="12"/>
+      <rect x="180" y="140" width="12" height="12"/>
+      
+      <rect x="80" y="180" width="12" height="12"/>
+      <rect x="100" y="180" width="12" height="12"/>
+      <rect x="140" y="180" width="12" height="12"/>
+      <rect x="160" y="180" width="12" height="12"/>
+      <rect x="200" y="180" width="12" height="12"/>
+      
+      <rect x="40" y="200" width="12" height="12"/>
+      <rect x="80" y="200" width="12" height="12"/>
+      <rect x="120" y="200" width="12" height="12"/>
+      <rect x="140" y="200" width="12" height="12"/>
+      <rect x="180" y="200" width="12" height="12"/>
+    </g>
+  </g>
+  
+  <!-- Texto/Badge -->
+  <text x="256" y="450" font-family="Arial, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="white">FICHERO</text>
+  <text x="256" y="480" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#e3f2fd">OBRA QR</text>
+</svg>

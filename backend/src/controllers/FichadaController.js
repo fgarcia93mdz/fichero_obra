@@ -68,15 +68,15 @@ class FichadaController {
       // Crear el timestamp actual
       const timestamp = new Date();
 
-      // Crear el payload que se codificará en el QR
+      // Crear el payload que se codificará en el QR (ESTÁTICO POR OBRA)
       const qrPayload = {
         obraId: parseInt(obraId),
-        timestamp: timestamp.toISOString(),
-        // Token simple para validar integridad
-        hash: Buffer.from(`${obraId}-${timestamp.getTime()}`).toString('base64').substring(0, 16)
+        obraNombre: obra.nombre,
+        // Hash estático basado solo en el ID de la obra
+        hash: Buffer.from(`obra-${obraId}-${obra.nombre}`).toString('base64').substring(0, 16)
       };
 
-      // Generar el QR code en base64
+      // Generar el QR code en base64 (SIEMPRE EL MISMO PARA LA MISMA OBRA)
       const qrString = JSON.stringify(qrPayload);
       const qrBase64 = await QRCode.toDataURL(qrString, {
         errorCorrectionLevel: 'M',
@@ -90,11 +90,11 @@ class FichadaController {
         }
       });
 
-      console.log(`📱 QR generado para obra: ${obra.nombre} por usuario: ${req.user.nombre}`);
+      console.log(`📱 QR estático generado para obra: ${obra.nombre} por usuario: ${req.user.nombre}`);
 
       res.json({
         success: true,
-        message: 'QR generado correctamente',
+        message: 'QR estático generado correctamente',
         data: {
           qrBase64,
           obra: {
@@ -105,9 +105,9 @@ class FichadaController {
             long: parseFloat(obra.long),
             radioPermitido: obra.radioPermitido
           },
-          timestamp,
-          validoHasta: new Date(timestamp.getTime() + (parseInt(process.env.QR_EXPIRY_MINUTES) || 5) * 60 * 1000),
-          generadoPor: req.user.nombre
+          esEstatico: true,
+          generadoPor: req.user.nombre,
+          nota: 'Este QR es permanente para esta obra y no cambia'
         }
       });
 
@@ -128,6 +128,7 @@ class FichadaController {
       .isInt({ min: 1 })
       .withMessage('obraId debe ser un número entero positivo'),
     body('timestamp')
+      .optional()
       .isISO8601()
       .withMessage('timestamp debe ser una fecha válida en formato ISO'),
     body('userId')
@@ -147,6 +148,45 @@ class FichadaController {
     body('tipo')
       .isIn(['entrada', 'salida'])
       .withMessage('tipo debe ser "entrada" o "salida"')
+  ];
+
+  /**
+   * Validaciones para listar fichadas
+   */
+  static listarFichadasValidations = [
+    query('page')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('page debe ser un número entero positivo'),
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 100 })
+      .withMessage('limit debe ser un número entero entre 1 y 100'),
+    query('obraId')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('obraId debe ser un número entero positivo'),
+    query('userId')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('userId debe ser un número entero positivo'),
+    query('desde')
+      .optional()
+      .isISO8601()
+      .withMessage('desde debe ser una fecha válida en formato ISO'),
+    query('hasta')
+      .optional()
+      .isISO8601()
+      .withMessage('hasta debe ser una fecha válida en formato ISO')
+  ];
+
+  /**
+   * Validaciones para aprobar fichada
+   */
+  static aprobarFichadaValidations = [
+    param('id')
+      .isInt({ min: 1 })
+      .withMessage('id debe ser un número entero positivo')
   ];
 
   /**
@@ -206,20 +246,7 @@ class FichadaController {
         });
       }
 
-      // Verificar que el QR no ha expirado (más de 5 minutos)
-      const qrTimestamp = new Date(timestamp);
-      const now = new Date();
-      const diffMinutes = (now - qrTimestamp) / (1000 * 60);
-      const expiryMinutes = parseInt(process.env.QR_EXPIRY_MINUTES) || 5;
-
-      if (diffMinutes > expiryMinutes) {
-        return res.status(400).json({
-          error: `QR expirado. Válido por ${expiryMinutes} minutos`,
-          generated: qrTimestamp.toLocaleString(),
-          scanned: now.toLocaleString(),
-          minutesElapsed: Math.round(diffMinutes * 100) / 100
-        });
-      }
+      // Los QRs son ahora estáticos (no expiran) - eliminada validación de timestamp
 
       // Calcular distancia desde la obra
       const distancia = this.calcularDistancia(
@@ -239,6 +266,9 @@ class FichadaController {
           mensaje: `Debes estar a menos de ${obra.radioPermitido}m de la obra para fichar`
         });
       }
+
+      // Timestamp actual para la fichada
+      const now = new Date();
 
       // Crear la fichada
       const fichada = await Fichada.create({
@@ -486,6 +516,113 @@ class FichadaController {
       console.error('❌ Error al listar usuarios:', error);
       res.status(500).json({
         error: 'Error interno del servidor al listar usuarios',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+
+  /**
+   * GET /fichada/estadisticas
+   * Obtiene estadísticas de fichadas (requiere rol supervisor/admin)
+   */
+  static async obtenerEstadisticas(req, res) {
+    try {
+      const { desde, hasta } = req.query;
+      
+      // Filtros de fecha
+      const whereConditions = {};
+      if (desde || hasta) {
+        whereConditions.timestamp = {};
+        if (desde) {
+          whereConditions.timestamp[require('sequelize').Op.gte] = new Date(desde);
+        }
+        if (hasta) {
+          whereConditions.timestamp[require('sequelize').Op.lte] = new Date(hasta);
+        }
+      }
+
+      // Si es empleado, solo sus propias estadísticas
+      if (req.user.rol === 'empleado') {
+        whereConditions.userId = req.user.id;
+      }
+
+      // Contar fichadas por tipo
+      const fichadasPorTipo = await Fichada.findAll({
+        where: whereConditions,
+        attributes: [
+          'tipo',
+          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'cantidad']
+        ],
+        group: ['tipo']
+      });
+
+      // Contar fichadas por estado de aprobación
+      const fichadasPorEstado = await Fichada.findAll({
+        where: whereConditions,
+        attributes: [
+          'aprobado',
+          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'cantidad']
+        ],
+        group: ['aprobado']
+      });
+
+      // Fichadas por obra (solo para supervisores/admin)
+      let fichadasPorObra = [];
+      if (['supervisor', 'admin'].includes(req.user.rol)) {
+        fichadasPorObra = await Fichada.findAll({
+          where: whereConditions,
+          attributes: [
+            'obraId',
+            [require('sequelize').fn('COUNT', require('sequelize').col('Fichada.id')), 'cantidad']
+          ],
+          include: [{
+            model: Obra,
+            as: 'obra',
+            attributes: ['nombre']
+          }],
+          group: ['obraId', 'obra.id', 'obra.nombre']
+        });
+      }
+
+      // Total de fichadas
+      const totalFichadas = await Fichada.count({
+        where: whereConditions
+      });
+
+      console.log(`📊 Consultando estadísticas de fichadas: ${totalFichadas} total`);
+
+      res.json({
+        success: true,
+        message: 'Estadísticas obtenidas correctamente',
+        data: {
+          resumen: {
+            totalFichadas,
+            periodo: {
+              desde: desde || 'Sin límite',
+              hasta: hasta || 'Sin límite'
+            }
+          },
+          porTipo: fichadasPorTipo.reduce((acc, item) => {
+            acc[item.tipo] = parseInt(item.get('cantidad'));
+            return acc;
+          }, { entrada: 0, salida: 0 }),
+          porEstado: fichadasPorEstado.reduce((acc, item) => {
+            const estado = item.aprobado ? 'aprobadas' : 'pendientes';
+            acc[estado] = parseInt(item.get('cantidad'));
+            return acc;
+          }, { aprobadas: 0, pendientes: 0 }),
+          porObra: fichadasPorObra.map(item => ({
+            obraId: item.obraId,
+            obra: item.obra.nombre,
+            cantidad: parseInt(item.get('cantidad'))
+          }))
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error al obtener estadísticas:', error);
+      res.status(500).json({
+        error: 'Error interno del servidor al obtener estadísticas',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }

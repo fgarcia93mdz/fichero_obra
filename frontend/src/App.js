@@ -6,6 +6,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import Login from './components/Login';
 import QRButtonObra from './components/QRButtonObra';
 import QRScannerFichada from './components/QRScannerFichada';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { authService, fichadaService } from './services/api';
 
 function App() {
@@ -16,6 +17,11 @@ function App() {
   // Verificar autenticación al cargar la app
   useEffect(() => {
     const checkAuth = () => {
+      // Limpiar tokens corruptos automáticamente
+      if (!authService.isTokenValid()) {
+        authService.clearAuthData();
+      }
+      
       if (authService.isAuthenticated()) {
         const currentUser = authService.getCurrentUser();
         setUser(currentUser);
@@ -195,6 +201,9 @@ function App() {
         pauseOnHover
         theme="light"
       />
+      
+      {/* PWA Install Prompt */}
+      <PWAInstallPrompt />
     </div>
   );
 }
